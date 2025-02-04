@@ -1,3 +1,6 @@
+targetScope = 'resourceGroup'
+
+
 var acrName = 'acrtechconnect${uniqueString(resourceGroup().id)}'
 var acaEnvName = 'ace-techconnect'
 var appName = 'app1'
@@ -18,6 +21,12 @@ resource app 'Microsoft.App/containerApps@2024-10-02-preview' = {
       ingress: {
         external: true
       }
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: 'system'
+        }
+      ]
     }
     template: {
       containers: [
