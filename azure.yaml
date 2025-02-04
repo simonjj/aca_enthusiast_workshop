@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: aca_enthusiast_workshop
+metadata:
+  template: aca_enthusiast_workshop@0.0.1-beta
+hooks:
+  postup:
+    posix:
+      shell: sh
+      run: ./hooks/postup.sh
