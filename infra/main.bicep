@@ -70,4 +70,26 @@ resource env 'Microsoft.App/managedEnvironments@2024-02-02-preview' = {
 }
 
 
+var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(registry.id, acrPullRoleId, env.id)
+  scope: registry
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
+    principalId: env.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+
+module app3 '3-scaling.bicep' = {
+  name: 'app3Module'
+  params: {
+    acr: registry
+    envId: env.id
+  }
+}
+
+
 output ACR_NAME string = acrName
+output APP3_ID string = app3.outputs.appId
