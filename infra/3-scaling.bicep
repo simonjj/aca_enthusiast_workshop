@@ -21,7 +21,7 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
 
 
 resource app 'Microsoft.App/containerApps@2024-10-02-preview' = {
-  name: 'app'
+  name: 'app3'
   location: resourceGroup().location
   properties: {
     environmentId: envId
