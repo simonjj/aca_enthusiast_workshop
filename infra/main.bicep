@@ -1,10 +1,23 @@
 targetScope = 'resourceGroup'
 
 
+var appendix = 'techconnect${uniqueString(resourceGroup().id)}'
 var containerAppsLocation = resourceGroup().location
-var acrName = 'acrtechconnect${uniqueString(resourceGroup().id)}'
-var logAnalyticsWorkspaceName = 'log-techconnect${uniqueString(resourceGroup().id)}'
-var acaEnvName = 'ace-techconnect'
+var acrName = 'acr${appendix}'
+var logAnalyticsWorkspaceName = 'log-${appendix}'
+var acaEnvName = 'ace-${appendix}'
+
+// pe + private dns + afd
+var vnetName  = 'vnet-${appendix}'
+var subnetName  = 'subnet-${appendix}'
+
+var privateEndpointName  = 'pe-${appendix}'
+var dnsNetLinkName = 'dns-pe-link-${appendix}'
+
+var frontDoorEndpointName  = 'afd-${appendix}'
+
+
+
 
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
@@ -45,10 +58,14 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09
 }
 
 
+// ACA resources: env and containerApp
+
 resource env 'Microsoft.App/managedEnvironments@2024-02-02-preview' = {
   name: acaEnvName
   location: containerAppsLocation
   properties: {
+    publicNetworkAccess: 'Disabled'
+
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -68,7 +85,95 @@ resource env 'Microsoft.App/managedEnvironments@2024-02-02-preview' = {
   }
 
 }
+var containerAppEnv = env
 
+// create a quickstart app
+// import these from the top respectively
+var containerAppName = 'quickstart'
+var location = containerAppsLocation
+
+
+var image = 'mcr.microsoft.com/k8se/quickstart:latest'
+resource containerApp 'Microsoft.App/containerApps@2024-02-02-preview' = {
+  name: containerAppName
+  location: location
+  properties: {
+    environmentId: containerAppEnv.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 80
+        transport: 'Auto'
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: containerAppName
+          image: image
+          resources: {
+            cpu: '0.5'
+            memory: '1Gi'
+          }
+        }
+      ]
+    }
+  }
+  dependsOn: [
+    env
+  ]
+}
+
+
+
+
+
+// create vnet and private endpoint
+module vnetPe 'vnet_pe.bicep' = {
+  name: 'vnetPeDeployment'
+  params: {
+    location: containerAppsLocation
+    vnetName: vnetName
+    subnetName: subnetName
+    privateEndpointName: privateEndpointName
+    acaEnvId: env.id
+    acaEnvName: acaEnvName
+  }
+  dependsOn: [
+    env
+  ]
+}
+
+
+// create private dns resouces
+module privateDns 'private_dns.bicep' = {
+  name: 'privateDnsDeployment'
+  params: {
+    location: containerAppsLocation
+    vnetId: vnetPe.outputs.vnetId
+    dnsNetLinkName: dnsNetLinkName
+  }
+  dependsOn: [
+    vnetPe
+  ]
+}
+
+
+// create Frontdoor resources
+module afd 'afd.bicep' = {
+  name: 'afdDeployment'
+  params: {
+    frontDoorProfileName: frontDoorEndpointName
+    containerAppEnvId: env.id
+    containerAppFqdn: containerApp.properties.configuration.ingress.fqdn
+    location: location
+    appendix: appendix
+  }
+  dependsOn: [
+    env
+  ]
+}
 
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
