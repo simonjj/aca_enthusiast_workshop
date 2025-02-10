@@ -1,8 +1,9 @@
 targetScope = 'resourceGroup'
 
+var appendix = 'techconnect${uniqueString(resourceGroup().id)}'
 
 var acrName = 'acrtechconnect${uniqueString(resourceGroup().id)}'
-var acaEnvName = 'ace-techconnect'
+var acaEnvName = 'ace-${appendix}'
 var appName = 'app1'
 
 resource env 'Microsoft.App/managedEnvironments@2024-10-02-preview' existing = {
