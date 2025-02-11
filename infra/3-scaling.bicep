@@ -65,7 +65,7 @@ resource app 'Microsoft.App/containerApps@2024-10-02-preview' = {
               type: 'azure-servicebus'
               metadata: {
                 namespace: 'queue1'
-                queue: 'queue1'
+                queueName: 'queue1'
                 messageCount: '10'
               }
               identity: 'system'
