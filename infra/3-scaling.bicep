@@ -2,6 +2,7 @@ param envId string
 param acr object
 
 var serviceBusNamespaceName = 'sb-${uniqueString(resourceGroup().id)}'
+var queueName = 'queue1'
 
 resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
   name: serviceBusNamespaceName
@@ -12,7 +13,7 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
   }
 
   resource queue 'queues' = {
-    name: 'queue1'
+    name: queueName
     properties: {
       lockDuration: 'PT1M'
     }
@@ -37,11 +38,21 @@ resource app 'Microsoft.App/containerApps@2024-10-02-preview' = {
       containers: [
         {
           name: 'main'
-          image: 'nginx:latest'
+          image: 'mcr.microsoft.com/k8se/quickstart:latest' // this will be replaced with the image from the ACR in the post-deployment script
           resources: {
             cpu: json('1.0')
             memory: '2.0Gi'
           }
+          env: [
+            {
+              name: 'QUEUE_NAME'
+              value: queueName
+            }
+            {
+              name: 'SERVICE_BUS_NAMESPACE'
+              value: '${serviceBusNamespace.name}.servicebus.windows.net'
+            }
+          ]
         }
       ]
       scale: {
@@ -81,3 +92,4 @@ resource sbRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 }
 
 output appId string = app.id
+output appName string = app.name
