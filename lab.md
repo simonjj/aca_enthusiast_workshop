@@ -10,6 +10,7 @@
 
     ```bash
     git clone https://github.com/simonjj/aca_enthusiast_workshop
+    cd aca_enthusiast_workshop
     azd up
     ```
 
