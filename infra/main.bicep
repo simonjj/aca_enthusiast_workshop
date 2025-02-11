@@ -5,7 +5,8 @@ var appendix = 'techconnect${uniqueString(resourceGroup().id)}'
 var containerAppsLocation = resourceGroup().location
 var acrName = 'acr${appendix}'
 var logAnalyticsWorkspaceName = 'log-${appendix}'
-var acaEnvName = 'ace-${appendix}'
+var acaEnvName = 'pub-ace-${appendix}'
+var privateAcaEnvName = 'priv-ace-${appendix}'
 
 // pe + private dns + afd
 var vnetName  = 'vnet-${appendix}'
@@ -59,12 +60,12 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09
 
 
 // ACA resources: env and containerApp
-
+// public environment
 resource env 'Microsoft.App/managedEnvironments@2024-02-02-preview' = {
   name: acaEnvName
   location: containerAppsLocation
   properties: {
-    publicNetworkAccess: 'Disabled'
+    publicNetworkAccess: 'Enabled'
 
     appLogsConfiguration: {
       destination: 'log-analytics'
@@ -87,18 +88,169 @@ resource env 'Microsoft.App/managedEnvironments@2024-02-02-preview' = {
 }
 var containerAppEnv = env
 
+
+
+
+
+
+
+
 // create a quickstart app
 // import these from the top respectively
-var containerAppName = 'quickstart'
 var location = containerAppsLocation
 
+var containerAppNames = [
+  'request-delay-app'
+  'request-logger-app'
+]
 
-var image = 'mcr.microsoft.com/k8se/quickstart:latest'
-resource containerApp 'Microsoft.App/containerApps@2024-02-02-preview' = {
-  name: containerAppName
-  location: location
+var containerAppImages = [
+  'docker.io/tdarolywala/test-images:long-running-http-conn'
+  'simon.azurecr.io/request-logger:latest'
+]
+
+var appPorts = [
+  '8080'
+  '8080'
+]
+
+// create multiple container apps
+resource containerApps 'Microsoft.App/containerApps@2024-02-02-preview' = [for i in range(0, length(containerAppNames)): {
+  name: containerAppNames[i]
+  location: containerAppsLocation
   properties: {
     environmentId: containerAppEnv.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: appPorts[i]
+        transport: 'Auto'
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: containerAppNames[i]
+          image: containerAppImages[i]
+          resources: {
+            cpu: '1'
+            memory: '2Gi'
+          }
+        }
+      ]
+      scale: {
+        maxReplicas: '1'
+        minReplicas: '1'
+      }
+    }
+  }
+  dependsOn: [
+    env
+  ]
+}]
+
+resource probeProblemsApp 'Microsoft.App/containerApps@2024-02-02-preview' = {
+  name: 'sickly-app'
+  location: containerAppsLocation
+  properties: {
+    environmentId: containerAppEnv.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 8080
+        transport: 'Auto'
+      }
+    }
+    template: {
+      containers: [
+        // resources 
+        {
+          name: 'health-probe-problems'
+          image: 'simon.azurecr.io/sick_app:latest'
+          resources: {
+            cpu: '1'
+            memory: '2Gi'
+          }
+          probes: [
+            {
+              type: 'readiness'
+              tcpSocket: {
+                port: 8081
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 10
+              failureThreshold: 1
+            }
+            {
+              type: 'startup'
+              httpGet: {
+                path: '/startup_slow'
+                port: 8080
+                scheme: 'HTTP'
+                httpHeaders: [
+                  {
+                    name: 'Custom-Header'
+                    value: 'startup probe'
+                  }
+                ]
+              }
+              initialDelaySeconds: 3
+              failureThreshold: 1
+              periodSeconds: 3
+            }
+          ] // probes
+          
+        }
+
+      ] // containers
+      scale: {
+            maxReplicas: '1'
+            minReplicas: '1'
+      }
+    }
+  }
+  dependsOn: [
+    env
+  ]
+}
+
+
+
+
+
+// private environment and app for AFD
+resource envPrivate 'Microsoft.App/managedEnvironments@2024-02-02-preview' = {
+  name: privateAcaEnvName
+  location: containerAppsLocation
+  properties: {
+    publicNetworkAccess: 'Disabled'
+
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logAnalyticsWorkspace.properties.customerId
+        sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
+      }
+    }
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+         workloadProfileType: 'Consumption'
+      }
+    ]
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+}
+
+resource containerApp 'Microsoft.App/containerApps@2024-02-02-preview' = {
+  name: 'quickstart-behind-afd'
+  location: containerAppsLocation
+  properties: {
+    environmentId: envPrivate.id
     workloadProfileName: 'Consumption'
     configuration: {
       ingress: {
@@ -110,21 +262,24 @@ resource containerApp 'Microsoft.App/containerApps@2024-02-02-preview' = {
     template: {
       containers: [
         {
-          name: containerAppName
-          image: image
+          name: 'quickstart-behind-afd'
+          image: 'mcr.microsoft.com/k8se/quickstart:latest'
           resources: {
             cpu: '0.5'
             memory: '1Gi'
           }
         }
       ]
+      scale: {
+        maxReplicas: '1'
+        minReplicas: '1'
+      }
     }
   }
   dependsOn: [
-    env
+    envPrivate
   ]
 }
-
 
 
 
@@ -137,11 +292,11 @@ module vnetPe 'vnet_pe.bicep' = {
     vnetName: vnetName
     subnetName: subnetName
     privateEndpointName: privateEndpointName
-    acaEnvId: env.id
+    acaEnvId: envPrivate.id
     acaEnvName: acaEnvName
   }
   dependsOn: [
-    env
+    envPrivate
   ]
 }
 
@@ -165,13 +320,13 @@ module afd 'afd.bicep' = {
   name: 'afdDeployment'
   params: {
     frontDoorProfileName: frontDoorEndpointName
-    containerAppEnvId: env.id
+    containerAppEnvId: envPrivate.id
     containerAppFqdn: containerApp.properties.configuration.ingress.fqdn
     location: location
     appendix: appendix
   }
   dependsOn: [
-    env
+    envPrivate, containerApp
   ]
 }
 

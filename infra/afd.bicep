@@ -5,6 +5,7 @@
 param frontDoorProfileName string
 param containerAppEnvId string
 param containerAppFqdn string
+
 param appendix string
 param location string
 
@@ -46,7 +47,7 @@ resource frontDoorOriginGroup 'Microsoft.Cdn/profiles/originGroups@2021-06-01' =
   }
 }
 
-
+// create one origin per container app fqdn
 resource frontDoorOrigin 'Microsoft.Cdn/profiles/originGroups/origins@2024-09-01' = {
   name: frontDoorOriginName
   parent: frontDoorOriginGroup
@@ -71,9 +72,6 @@ resource frontDoorOrigin 'Microsoft.Cdn/profiles/originGroups/origins@2024-09-01
 resource frontDoorRoute 'Microsoft.Cdn/profiles/afdEndpoints/routes@2021-06-01' = {
   name: frontDoorRouteName
   parent: frontDoorEndpoint
-  dependsOn: [
-    frontDoorOrigin
-  ]
   properties: {
     originGroup: {
       id: frontDoorOriginGroup.id
@@ -89,6 +87,10 @@ resource frontDoorRoute 'Microsoft.Cdn/profiles/afdEndpoints/routes@2021-06-01' 
     linkToDefaultDomain: 'Enabled'
     httpsRedirect: 'Enabled'
   }
+  dependsOn: [
+    frontDoorOrigin
+  ]
 }
 
 // TODO: spit out the needed outputs
+
