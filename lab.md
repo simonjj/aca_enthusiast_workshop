@@ -10,9 +10,10 @@
 
     ```bash
     git clone https://github.com/simonjj/aca_enthusiast_workshop
+    azd auth login
+    az login
     azd up
     ```
-
     When prompted:
     - Provide an environment name
     - Select the subscription you want to deploy to
